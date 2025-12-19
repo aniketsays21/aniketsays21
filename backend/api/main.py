@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Add project root to Python path for ai_pipeline imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
