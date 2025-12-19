@@ -6,12 +6,20 @@ import enum
 from config.settings import settings
 
 # Create engine
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    echo=settings.DEBUG
-)
+# SQLite doesn't support pool_size/max_overflow
+if settings.DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        settings.DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        echo=settings.DEBUG
+    )
+else:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        echo=settings.DEBUG
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -46,7 +54,7 @@ class Product(Base):
     price = Column(String, nullable=True)
     images = Column(JSON)  # List of image URLs
     scraped_at = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column("metadata", JSON, nullable=True)  # Renamed to avoid SQLAlchemy conflict
 
 
 class ModelImage(Base):
@@ -59,7 +67,7 @@ class ModelImage(Base):
     thumbnail_url = Column(String, nullable=True)
     is_custom = Column(Boolean, default=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column("metadata", JSON, nullable=True)  # Renamed to avoid SQLAlchemy conflict
 
 
 class Background(Base):

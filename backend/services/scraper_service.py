@@ -1,5 +1,8 @@
 import sys
-sys.path.append('../ai_pipeline')
+import os
+
+# Add parent directory to path to import ai_pipeline
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from sqlalchemy.orm import Session
 from models.database import Product
@@ -28,7 +31,7 @@ async def scrape_product(url: str, db: Session) -> Product:
         description=product_data["description"],
         price=product_data.get("price"),
         images=product_data["images"],
-        metadata=product_data.get("metadata")
+        extra_metadata=product_data.get("metadata")
     )
 
     db.add(product)
