@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ugc_postgres
+    environment:
+      POSTGRES_USER: ugc_user
+      POSTGRES_PASSWORD: ugc_password
+      POSTGRES_DB: ugc_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ugc_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and Celery
+  redis:
+    image: redis:7-alpine
+    container_name: ugc_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ugc_backend
+    environment:
+      DATABASE_URL: postgresql://ugc_user:ugc_password@postgres:5432/ugc_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/2
+      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      USE_LOCAL_MODELS: "True"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+      - models:/app/model_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ugc_celery_worker
+    environment:
+      DATABASE_URL: postgresql://ugc_user:ugc_password@postgres:5432/ugc_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/2
+      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      USE_LOCAL_MODELS: "True"
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+      - models:/app/model_cache
+    depends_on:
+      - postgres
+      - redis
+    command: celery -A services.worker worker --loglevel=info
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ugc_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
+  models:
