@@ -46,7 +46,7 @@ class Product(Base):
     price = Column(String, nullable=True)
     images = Column(JSON)  # List of image URLs
     scraped_at = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)
 
 
 class ModelImage(Base):
@@ -59,7 +59,7 @@ class ModelImage(Base):
     thumbnail_url = Column(String, nullable=True)
     is_custom = Column(Boolean, default=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)
 
 
 class Background(Base):
