@@ -1,6 +1,8 @@
 import asyncio
+import os
+import json
 from typing import List, Dict, Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, quote
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page
 import httpx
@@ -21,9 +23,11 @@ class ProductScraper:
         "nykaa.com", "purplle.com", "myglamm.com", "sugarcosmetics.com"
     ]
 
-    def __init__(self, headless: bool = True, timeout: int = 30000):
+    def __init__(self, headless: bool = True, timeout: int = 30000, scraper_api_key: str = None):
         self.headless = headless
         self.timeout = timeout
+        # Get ScraperAPI key from param or environment variable
+        self.scraper_api_key = scraper_api_key or os.getenv("SCRAPER_API_KEY")
         self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         self.headers = {
             "User-Agent": self.user_agent,
@@ -162,6 +166,15 @@ class ProductScraper:
         try:
             async with httpx.AsyncClient(headers=self.headers, follow_redirects=True, timeout=20) as client:
                 response = await client.get(url)
+                if response.status_code == 403:
+                    logger.warning(f"HTTP 403 Forbidden for {url} - trying ScraperAPI")
+                    # Try ScraperAPI as fallback for blocked sites
+                    scraper_api_result = await self._scrape_with_scraper_api(url)
+                    if scraper_api_result:
+                        return scraper_api_result
+                    logger.warning("ScraperAPI also failed, trying generic scraper")
+                    return await self._scrape_generic(url)
+
                 if response.status_code != 200:
                     logger.warning(f"HTTP {response.status_code} for {url}")
                     return await self._scrape_generic(url)
@@ -184,6 +197,10 @@ class ProductScraper:
 
         except Exception as e:
             logger.error(f"Shopify HTML scraping failed: {e}")
+            # Try ScraperAPI before falling back to generic
+            scraper_api_result = await self._scrape_with_scraper_api(url)
+            if scraper_api_result:
+                return scraper_api_result
             return await self._scrape_generic(url)
 
     def _extract_json_ld(self, soup: BeautifulSoup) -> Optional[Dict]:
@@ -286,6 +303,83 @@ class ProductScraper:
             return ""
         soup = BeautifulSoup(html_text, 'html.parser')
         return soup.get_text(separator=" ", strip=True)
+
+    async def _scrape_with_scraper_api(self, url: str) -> Optional[Dict]:
+        """
+        Use ScraperAPI as a fallback for blocked sites.
+        ScraperAPI handles proxies, CAPTCHAs, and anti-bot measures.
+        Free tier: 5000 requests/month
+        Sign up at: https://www.scraperapi.com/
+        """
+        if not self.scraper_api_key:
+            logger.debug("ScraperAPI key not configured, skipping")
+            return None
+
+        logger.info("Trying ScraperAPI as fallback")
+        scraper_api_url = f"http://api.scraperapi.com?api_key={self.scraper_api_key}&url={quote(url)}&render=true"
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.get(scraper_api_url)
+                if response.status_code == 200:
+                    html = response.text
+                    soup = BeautifulSoup(html, 'html.parser')
+
+                    # Try JSON-LD first
+                    json_ld_data = self._extract_json_ld(soup)
+                    if json_ld_data:
+                        json_ld_data["metadata"]["source"] = "scraperapi_jsonld"
+                        return json_ld_data
+
+                    # Try meta tags
+                    meta_data = self._extract_meta_tags(soup, url)
+                    if meta_data.get("title") != "Unknown Product":
+                        meta_data["metadata"]["source"] = "scraperapi_meta"
+                        return meta_data
+
+                    # Generic extraction from HTML
+                    return {
+                        "title": self._extract_title(soup),
+                        "description": self._extract_description(soup),
+                        "price": self._extract_price(soup),
+                        "images": self._extract_images_from_soup(soup, url),
+                        "metadata": {
+                            "source": "scraperapi_generic",
+                            "url": url
+                        }
+                    }
+                else:
+                    logger.warning(f"ScraperAPI returned {response.status_code}")
+        except Exception as e:
+            logger.error(f"ScraperAPI failed: {e}")
+
+        return None
+
+    def _extract_images_from_soup(self, soup: BeautifulSoup, base_url: str) -> List[str]:
+        """Extract images from BeautifulSoup object without Playwright"""
+        images = []
+
+        # Find all images with common product image patterns
+        for img in soup.find_all("img"):
+            src = img.get("src") or img.get("data-src") or img.get("data-lazy-src") or img.get("data-srcset", "").split(",")[0].split()[0]
+            if src:
+                # Convert relative URLs to absolute
+                full_url = urljoin(base_url, src)
+                # Filter out tiny images (likely icons)
+                if not any(x in src.lower() for x in ["icon", "logo", "sprite", "badge", "rating"]):
+                    # Prefer larger images
+                    if "cdn.shopify.com" in src or "product" in src.lower() or any(ext in src.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                        images.append(full_url.split("?")[0])  # Remove query params
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_images = []
+        for img in images:
+            if img not in seen:
+                seen.add(img)
+                unique_images.append(img)
+
+        return unique_images[:10]
 
     async def _scrape_generic(self, url: str) -> Dict:
         """Scrape generic e-commerce page using heuristics"""
