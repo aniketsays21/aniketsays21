@@ -14,10 +14,30 @@ class ProductScraper:
     Supports: Amazon, Shopify stores, generic e-commerce sites
     """
 
+    # Known Shopify stores (Indian D2C brands)
+    KNOWN_SHOPIFY_DOMAINS = [
+        "dotandkey.com", "mamaearth.in", "plumgoodness.com", "mcaffeine.com",
+        "minimalistlabs.com", "themomsco.com", "wowskinscience.com", "beardo.in",
+        "nykaa.com", "purplle.com", "myglamm.com", "sugarcosmetics.com"
+    ]
+
     def __init__(self, headless: bool = True, timeout: int = 30000):
         self.headless = headless
         self.timeout = timeout
-        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        self.headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+        }
 
     async def scrape(self, url: str) -> Dict:
         """
@@ -40,21 +60,34 @@ class ProductScraper:
 
     def _detect_site_type(self, url: str) -> str:
         """Detect the type of e-commerce platform"""
-        domain = urlparse(url).netloc.lower()
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        path = parsed.path.lower()
 
         if "amazon" in domain:
             return "amazon"
-        elif "shopify" in domain or self._is_shopify_store(url):
+
+        # Check known Shopify domains
+        for shopify_domain in self.KNOWN_SHOPIFY_DOMAINS:
+            if shopify_domain in domain:
+                return "shopify"
+
+        # Check URL pattern for Shopify-style product URLs
+        if "/products/" in path:
             return "shopify"
-        else:
-            return "generic"
+
+        if "shopify" in domain or self._is_shopify_store(url):
+            return "shopify"
+
+        return "generic"
 
     def _is_shopify_store(self, url: str) -> bool:
         """Check if URL is a Shopify store by looking for common patterns"""
         try:
-            response = httpx.get(url, timeout=5, follow_redirects=True)
+            response = httpx.get(url, timeout=5, follow_redirects=True, headers=self.headers)
             return "Shopify" in response.headers.get("X-ShopId", "") or \
-                   "shopify" in response.text.lower()[:1000]
+                   "shopify" in response.text.lower()[:2000] or \
+                   "cdn.shopify.com" in response.text[:5000]
         except:
             return False
 
@@ -95,19 +128,19 @@ class ProductScraper:
 
     async def _scrape_shopify(self, url: str) -> Dict:
         """Scrape Shopify product page"""
-        # Shopify stores often have a .json endpoint
+        # Try Shopify JSON API first
         product_json_url = url.rstrip("/") + ".json"
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(product_json_url, timeout=10)
+            async with httpx.AsyncClient(headers=self.headers, follow_redirects=True) as client:
+                response = await client.get(product_json_url, timeout=15)
                 if response.status_code == 200:
                     data = response.json()
                     product = data.get("product", {})
 
                     return {
                         "title": product.get("title", "Unknown Product"),
-                        "description": product.get("body_html", ""),
+                        "description": self._clean_html(product.get("body_html", "")),
                         "price": str(product.get("variants", [{}])[0].get("price", "")),
                         "images": [img["src"] for img in product.get("images", [])],
                         "metadata": {
@@ -117,11 +150,142 @@ class ProductScraper:
                             "vendor": product.get("vendor")
                         }
                     }
-        except:
-            logger.warning("Shopify JSON API failed, falling back to HTML scraping")
+        except Exception as e:
+            logger.warning(f"Shopify JSON API failed: {e}")
 
-        # Fallback to HTML scraping
-        return await self._scrape_generic(url)
+        # Fallback to HTML scraping with embedded JSON-LD
+        logger.info("Trying HTML scraping with JSON-LD extraction")
+        return await self._scrape_shopify_html(url)
+
+    async def _scrape_shopify_html(self, url: str) -> Dict:
+        """Scrape Shopify store by parsing HTML and JSON-LD data"""
+        try:
+            async with httpx.AsyncClient(headers=self.headers, follow_redirects=True, timeout=20) as client:
+                response = await client.get(url)
+                if response.status_code != 200:
+                    logger.warning(f"HTTP {response.status_code} for {url}")
+                    return await self._scrape_generic(url)
+
+                html = response.text
+                soup = BeautifulSoup(html, 'html.parser')
+
+                # Try to extract JSON-LD structured data
+                json_ld_data = self._extract_json_ld(soup)
+                if json_ld_data:
+                    return json_ld_data
+
+                # Try to extract from meta tags
+                meta_data = self._extract_meta_tags(soup, url)
+                if meta_data.get("title") != "Unknown Product":
+                    return meta_data
+
+                # Fallback to generic scraping
+                return await self._scrape_generic(url)
+
+        except Exception as e:
+            logger.error(f"Shopify HTML scraping failed: {e}")
+            return await self._scrape_generic(url)
+
+    def _extract_json_ld(self, soup: BeautifulSoup) -> Optional[Dict]:
+        """Extract product data from JSON-LD script tags"""
+        try:
+            scripts = soup.find_all("script", type="application/ld+json")
+            for script in scripts:
+                try:
+                    import json
+                    data = json.loads(script.string)
+
+                    # Handle both single object and array
+                    if isinstance(data, list):
+                        for item in data:
+                            if item.get("@type") == "Product":
+                                data = item
+                                break
+                        else:
+                            continue
+
+                    if data.get("@type") == "Product":
+                        images = data.get("image", [])
+                        if isinstance(images, str):
+                            images = [images]
+
+                        price = None
+                        offers = data.get("offers", {})
+                        if isinstance(offers, list):
+                            offers = offers[0] if offers else {}
+                        price = offers.get("price") or offers.get("lowPrice")
+
+                        return {
+                            "title": data.get("name", "Unknown Product"),
+                            "description": data.get("description", ""),
+                            "price": f"₹{price}" if price else None,
+                            "images": images[:10],
+                            "metadata": {
+                                "source": "shopify_jsonld",
+                                "brand": data.get("brand", {}).get("name") if isinstance(data.get("brand"), dict) else data.get("brand"),
+                                "sku": data.get("sku"),
+                            }
+                        }
+                except:
+                    continue
+        except Exception as e:
+            logger.debug(f"JSON-LD extraction failed: {e}")
+        return None
+
+    def _extract_meta_tags(self, soup: BeautifulSoup, url: str) -> Dict:
+        """Extract product data from Open Graph and meta tags"""
+        title = None
+        description = None
+        image = None
+        price = None
+
+        # Open Graph tags
+        og_title = soup.find("meta", property="og:title")
+        og_desc = soup.find("meta", property="og:description")
+        og_image = soup.find("meta", property="og:image")
+        og_price = soup.find("meta", property="product:price:amount")
+
+        if og_title:
+            title = og_title.get("content")
+        if og_desc:
+            description = og_desc.get("content")
+        if og_image:
+            image = og_image.get("content")
+        if og_price:
+            price = og_price.get("content")
+
+        # Collect all product images from og:image tags
+        images = []
+        for img_tag in soup.find_all("meta", property="og:image"):
+            img_url = img_tag.get("content")
+            if img_url and img_url not in images:
+                images.append(img_url)
+
+        # Also try to find images in srcset or data attributes
+        for img in soup.find_all("img", {"data-srcset": True}):
+            srcset = img.get("data-srcset", "")
+            urls = re.findall(r'(https?://[^\s,]+)', srcset)
+            for u in urls:
+                if u not in images and "cdn.shopify.com" in u:
+                    images.append(u.split("?")[0])  # Remove query params
+
+        return {
+            "title": title or "Unknown Product",
+            "description": description or "",
+            "price": f"₹{price}" if price else None,
+            "images": images[:10],
+            "metadata": {
+                "source": "meta_tags",
+                "url": url
+            }
+        }
+
+    def _clean_html(self, html_text: str) -> str:
+        """Remove HTML tags from text"""
+        if not html_text:
+            return ""
+        soup = BeautifulSoup(html_text, 'html.parser')
+        return soup.get_text(separator=" ", strip=True)
 
     async def _scrape_generic(self, url: str) -> Dict:
         """Scrape generic e-commerce page using heuristics"""
