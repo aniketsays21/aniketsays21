@@ -28,7 +28,7 @@ async def scrape_product(url: str, db: Session) -> Product:
         description=product_data["description"],
         price=product_data.get("price"),
         images=product_data["images"],
-        metadata=product_data.get("metadata")
+        extra_data=product_data.get("metadata")
     )
 
     db.add(product)
