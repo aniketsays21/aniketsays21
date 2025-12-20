@@ -67,7 +67,7 @@ class ModelImage(Base):
     thumbnail_url = Column(String, nullable=True)
     is_custom = Column(Boolean, default=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)  # renamed from 'metadata'
 
 
 class Background(Base):
