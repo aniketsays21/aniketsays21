@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     SCRAPING_TIMEOUT: int = 30000
     MAX_IMAGES_PER_PRODUCT: int = 10
     USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    SCRAPER_API_KEY: str = ""  # ScraperAPI key for bypassing anti-bot protection
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
