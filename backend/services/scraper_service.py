@@ -1,5 +1,8 @@
 import sys
-sys.path.append('../ai_pipeline')
+import os
+
+# Add parent directory to path so we can import ai_pipeline
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy.orm import Session
 from models.database import Product
