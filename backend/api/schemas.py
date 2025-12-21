@@ -49,7 +49,7 @@ class ProductResponse(BaseModel):
     price: Optional[str]
     images: List[str]
     scraped_at: datetime
-    metadata: Optional[Dict[str, Any]]
+    extra_data: Optional[Dict[str, Any]] = None  # renamed from 'metadata'
 
     class Config:
         from_attributes = True
