@@ -35,6 +35,7 @@ export default function VideoGenerator() {
   })
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedVideo, setGeneratedVideo] = useState(null)
+  const [progress, setProgress] = useState(0)
 
   const updateFormData = (field, value) => {
     setFormData(prev => ({
@@ -63,16 +64,16 @@ export default function VideoGenerator() {
     }
 
     setIsGenerating(true)
+    setProgress(0)
 
     try {
-      // Create video generation request
+      // Create video generation request with new API format
       const response = await axios.post('/api/generate', {
-        product_id: formData.product?.id || null,
-        model_image_id: formData.model.id,
-        background_id: formData.background.id,
-        action_id: formData.action.id,
+        model_image_url: formData.model.file_url,
+        background_url: formData.background.file_url,
+        action_type: formData.action.pose_sequence?.type || 'talking',
+        action_data: formData.action.pose_sequence || {},
         audio_text: formData.voice.text || null,
-        emotion: formData.voice.emotion,
         duration: formData.duration,
       })
 
@@ -96,27 +97,32 @@ export default function VideoGenerator() {
         const response = await axios.get(`/api/video/${jobId}`)
         const job = response.data
 
+        // Update progress
+        setProgress(job.progress || 0)
+
         if (job.status === 'completed') {
           clearInterval(interval)
-          setGeneratedVideo(job)
+          setGeneratedVideo({
+            ...job,
+            output_video_url: job.output_url
+          })
           setIsGenerating(false)
+          setProgress(1)
           toast.success('Video generated successfully!')
         } else if (job.status === 'failed') {
           clearInterval(interval)
           setIsGenerating(false)
+          setProgress(0)
           toast.error(`Video generation failed: ${job.error_message}`)
-        } else {
-          // Update progress
-          const progress = Math.round(job.progress * 100)
-          console.log(`Progress: ${progress}%`)
         }
       } catch (error) {
         console.error('Error polling job status:', error)
         clearInterval(interval)
         setIsGenerating(false)
+        setProgress(0)
         toast.error('Failed to check video status')
       }
-    }, 3000) // Poll every 3 seconds
+    }, 2000) // Poll every 2 seconds
   }
 
   return (
@@ -204,6 +210,7 @@ export default function VideoGenerator() {
             isGenerating={isGenerating}
             generatedVideo={generatedVideo}
             onGenerate={generateVideo}
+            progress={progress}
           />
         )}
       </div>

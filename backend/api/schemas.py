@@ -40,6 +40,16 @@ class VideoGenerationRequest(BaseModel):
     custom_config: Optional[Dict[str, Any]] = Field(None, description="Additional config")
 
 
+class VideoGenerateRequest(BaseModel):
+    """Simplified request for video generation with preset images"""
+    model_image_url: str = Field(..., description="URL of model image")
+    background_url: str = Field(..., description="URL of background image")
+    action_type: str = Field("talking", description="Type of action/animation")
+    action_data: Optional[Dict[str, Any]] = Field(None, description="Action configuration")
+    audio_text: Optional[str] = Field(None, description="Text for voice synthesis")
+    duration: Optional[float] = Field(5.0, description="Video duration in seconds", ge=1, le=30)
+
+
 # Response Schemas
 class ProductResponse(BaseModel):
     id: int

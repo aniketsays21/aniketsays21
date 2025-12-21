@@ -43,7 +43,8 @@ class Settings(BaseSettings):
     MODEL_CACHE_DIR: str = "./model_cache"
 
     # Video Generation
-    VIDEO_MODEL: str = "magicanimate"
+    VIDEO_MODEL: str = "placeholder"  # Options: placeholder, wan2.1, svd, animatediff
+    VIDEO_MODEL_VARIANT: str = "1.3b"  # For wan2.1: 1.3b (faster) or 14b (quality)
     VIDEO_RESOLUTION: str = "512x512"
     VIDEO_FPS: int = 24
     VIDEO_DURATION: int = 5

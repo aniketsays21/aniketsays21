@@ -1,4 +1,4 @@
-export default function VideoPreview({ formData, isGenerating, generatedVideo, onGenerate }) {
+export default function VideoPreview({ formData, isGenerating, generatedVideo, onGenerate, progress = 0 }) {
   return (
     <div className="space-y-6">
       <div>
@@ -97,39 +97,62 @@ export default function VideoPreview({ formData, isGenerating, generatedVideo, o
 
       {/* Generate Button */}
       {!generatedVideo && (
-        <button
-          onClick={onGenerate}
-          disabled={isGenerating || !formData.model || !formData.background || !formData.action}
-          className="btn btn-primary w-full py-4 text-lg"
-        >
-          {isGenerating ? (
-            <span className="flex items-center justify-center">
-              <svg
-                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Generating Video... This may take 2-5 minutes
-            </span>
-          ) : (
-            '🎬 Generate Video'
+        <div className="space-y-4">
+          {isGenerating && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-blue-900">Generating video...</span>
+                <span className="text-sm font-bold text-blue-700">{Math.round(progress * 100)}%</span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-3">
+                <div
+                  className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(progress * 100, 5)}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-blue-700 mt-2">
+                {progress < 0.3 ? 'Downloading assets...' :
+                 progress < 0.5 ? 'Loading AI model...' :
+                 progress < 0.8 ? 'Generating video frames...' :
+                 'Finalizing video...'}
+              </p>
+            </div>
           )}
-        </button>
+
+          <button
+            onClick={onGenerate}
+            disabled={isGenerating || !formData.model || !formData.background || !formData.action}
+            className="btn btn-primary w-full py-4 text-lg disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <span className="flex items-center justify-center">
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Generating...
+              </span>
+            ) : (
+              '🎬 Generate Video'
+            )}
+          </button>
+        </div>
       )}
 
       {/* Generated Video */}
