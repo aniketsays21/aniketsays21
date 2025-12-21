@@ -292,81 +292,49 @@ class ApifyScraper:
 
     def _normalize_shopify_result(self, item: Dict, url: str) -> Dict:
         """Normalize Shopify actor output to our format"""
-        logger.info(f"Normalizing Shopify result: {str(item)[:500]}")
+        logger.info(f"Normalizing Shopify result keys: {list(item.keys()) if isinstance(item, dict) else 'not a dict'}")
 
-        # Try various field names the actor might use
-        title = (
-            item.get("title") or
-            item.get("name") or
-            item.get("productTitle") or
-            item.get("product", {}).get("title") if isinstance(item.get("product"), dict) else None or
-            "Unknown Product"
-        )
+        # Get title
+        title = item.get("title") or item.get("name") or "Unknown Product"
 
+        # Get description - Apify returns "descriptionHtml"
         description = (
+            item.get("descriptionHtml") or
             item.get("description") or
             item.get("body_html") or
-            item.get("productDescription") or
-            item.get("product", {}).get("body_html") if isinstance(item.get("product"), dict) else None or
             ""
         )
 
+        # Clean HTML from description
         if description and "<" in description:
             from bs4 import BeautifulSoup
             description = BeautifulSoup(description, 'html.parser').get_text(separator=" ", strip=True)
 
-        # Get price - try many variations
+        # Get price from variants array
         price = None
-        if "price" in item:
-            price = str(item["price"])
-        elif "variants" in item and item["variants"]:
-            price = str(item["variants"][0].get("price", ""))
-        elif "priceRange" in item:
-            price = item["priceRange"].get("minVariantPrice", {}).get("amount")
-        elif "product" in item and isinstance(item["product"], dict):
-            variants = item["product"].get("variants", [])
-            if variants:
-                price = str(variants[0].get("price", ""))
+        variants = item.get("variants", [])
+        if variants and len(variants) > 0:
+            variant_price = variants[0].get("price")
+            if variant_price:
+                price = f"₹{variant_price}"
 
-        if price and price != "None":
-            price = f"₹{price}" if not str(price).startswith("₹") else price
-        else:
-            price = None
-
-        # Get images - try many variations
+        # Get images - Apify returns images as array of objects with "src" field
         images = []
-
-        # Direct images array
-        if "images" in item and isinstance(item["images"], list):
-            for img in item["images"]:
-                if isinstance(img, str):
-                    images.append(img)
-                elif isinstance(img, dict):
-                    images.append(img.get("src") or img.get("url") or img.get("originalSrc") or "")
-
-        # Single image field
-        if not images and "image" in item:
-            img = item["image"]
-            if isinstance(img, str):
+        for img in item.get("images", []):
+            if isinstance(img, dict):
+                src = img.get("src")
+                if src:
+                    images.append(src)
+            elif isinstance(img, str):
                 images.append(img)
-            elif isinstance(img, dict):
-                images.append(img.get("src") or img.get("url") or "")
 
-        # Nested product.images
-        if not images and "product" in item and isinstance(item["product"], dict):
-            for img in item["product"].get("images", []):
-                if isinstance(img, dict):
-                    images.append(img.get("src") or img.get("url") or "")
-                elif isinstance(img, str):
-                    images.append(img)
-
-        # Filter out empty strings
-        images = [img for img in images if img and img != "None"][:10]
+        # Limit to 10 images
+        images = images[:10]
 
         logger.info(f"Normalized result - title: {title}, images: {len(images)}, price: {price}")
 
         return {
-            "title": title if title != "Unknown Product" or not item else title,
+            "title": title,
             "description": description[:2000] if description else "",
             "price": price,
             "images": images,
@@ -374,9 +342,8 @@ class ApifyScraper:
                 "source": "apify_shopify",
                 "url": url,
                 "vendor": item.get("vendor"),
-                "product_type": item.get("product_type") or item.get("productType"),
+                "product_type": item.get("productType"),
                 "handle": item.get("handle"),
-                "raw_keys": list(item.keys()) if isinstance(item, dict) else []
             }
         }
 
