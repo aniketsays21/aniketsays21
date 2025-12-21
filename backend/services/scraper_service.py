@@ -1,18 +1,24 @@
-import sys
-import os
+"""
+Product scraper service.
 
-# Add parent directory to path so we can import ai_pipeline
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+Uses Apify actors for reliable product scraping:
+- Shopify stores: Specialized Shopify actor
+- Amazon/Flipkart/Others: Generic e-commerce actor
+"""
 
 from sqlalchemy.orm import Session
 from models.database import Product
-from ai_pipeline.scraper.product_scraper import scrape_product as scrape_product_util
+from services.apify_scraper import scrape_product_with_apify
 from loguru import logger
 
 
 async def scrape_product(url: str, db: Session) -> Product:
     """
-    Scrape product from URL and save to database
+    Scrape product from URL and save to database.
+
+    Uses Apify actors for scraping:
+    - Shopify URLs → Shopify product scraper actor
+    - Other URLs → E-commerce scraping tool actor
     """
     # Check if already scraped
     existing = db.query(Product).filter(Product.url == url).first()
@@ -20,9 +26,9 @@ async def scrape_product(url: str, db: Session) -> Product:
         logger.info(f"Product already scraped: {url}")
         return existing
 
-    # Scrape product
-    logger.info(f"Scraping product: {url}")
-    product_data = await scrape_product_util(url)
+    # Scrape product using Apify
+    logger.info(f"Scraping product with Apify: {url}")
+    product_data = await scrape_product_with_apify(url)
 
     # Save to database
     product = Product(
@@ -38,5 +44,5 @@ async def scrape_product(url: str, db: Session) -> Product:
     db.commit()
     db.refresh(product)
 
-    logger.info(f"Product saved: {product.id}")
+    logger.info(f"Product saved: {product.id} - {product.title}")
     return product

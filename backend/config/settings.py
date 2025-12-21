@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     USER_AGENT: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     SCRAPER_API_KEY: str = ""  # ScraperAPI key for bypassing anti-bot protection
 
+    # Apify
+    APIFY_API_TOKEN: str = ""  # Apify API token for product scraping
+    APIFY_SHOPIFY_ACTOR: str = "linen_snack~shopify-product-scraper-extract-product-data-via-json-api"
+    APIFY_ECOMMERCE_ACTOR: str = "apify~e-commerce-scraping-tool"
+
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
