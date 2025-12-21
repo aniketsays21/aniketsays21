@@ -125,11 +125,11 @@ class ApifyScraper:
         """Scrape Shopify product using Apify actor"""
         actor_id = self.shopify_actor
 
-        # Input for Shopify actor - try different input formats
+        # Input for Shopify actor - correct format based on actor's input schema
         run_input = {
-            "startUrls": [{"url": url}],
-            "maxItems": 1,
-            "proxyConfiguration": {"useApifyProxy": True}
+            "shopifyUrl": url,
+            "urlType": "Auto-detect",
+            "maxProducts": 1
         }
 
         result = await self._run_actor(actor_id, run_input)
