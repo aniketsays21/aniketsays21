@@ -83,6 +83,30 @@ export default function ProductScraper({ onComplete }) {
           </div>
         )}
 
+        {/* Display scraped images */}
+        {scrapedProduct && scrapedProduct.images && scrapedProduct.images.length > 0 && (
+          <div className="mt-6">
+            <h3 className="font-semibold text-gray-900 mb-3">Scraped Product Images</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {scrapedProduct.images.map((imageUrl, index) => (
+                <div
+                  key={index}
+                  className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100"
+                >
+                  <img
+                    src={imageUrl}
+                    alt={`Product image ${index + 1}`}
+                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="border-t pt-4">
           <button
             onClick={handleContinue}
