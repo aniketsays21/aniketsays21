@@ -119,7 +119,14 @@ async def list_voices():
 # Video Generation
 async def download_image(url: str, save_path: str) -> str:
     """Download image from URL to local path"""
-    async with aiohttp.ClientSession() as session:
+    import ssl
+    # Disable SSL verification for local development (macOS certificate issue)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    async with aiohttp.ClientSession(connector=connector) as session:
         async with session.get(url) as response:
             if response.status == 200:
                 os.makedirs(os.path.dirname(save_path), exist_ok=True)
