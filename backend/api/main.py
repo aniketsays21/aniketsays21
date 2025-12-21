@@ -8,13 +8,15 @@ import uvicorn
 from config.settings import settings
 from models.database import get_db, init_db
 from api import schemas
-from services import (
-    scraper_service,
-    model_service,
-    background_service,
-    voice_service,
-    video_service
-)
+
+# Only import scraper_service for now (other services need heavy dependencies)
+from services import scraper_service
+
+# Lazy import other services only when needed
+model_service = None
+background_service = None
+voice_service = None
+video_service = None
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -79,127 +81,50 @@ async def scrape_product(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# Model Management
-@app.post("/api/upload-model", response_model=schemas.ModelImageResponse)
-async def upload_model_image(
-    file: UploadFile = File(...),
-    name: str = Form(...),
-    db: Session = Depends(get_db)
-):
-    """Upload a custom model image"""
-    try:
-        model_image = await model_service.upload_model_image(file, name, db)
-        return model_image
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# Model Management - disabled for local development
+@app.post("/api/upload-model")
+async def upload_model_image(file: UploadFile = File(...), name: str = Form(...)):
+    raise HTTPException(status_code=503, detail="Model upload not available in local dev mode")
 
+@app.get("/api/models")
+async def list_models():
+    return []
 
-@app.get("/api/models", response_model=List[schemas.ModelImageResponse])
-async def list_models(
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    """Get list of available model images"""
-    models = await model_service.get_models(db, skip=skip, limit=limit)
-    return models
+# Backgrounds - disabled for local development
+@app.get("/api/backgrounds")
+async def list_backgrounds():
+    return []
 
+@app.post("/api/backgrounds")
+async def upload_background(file: UploadFile = File(...), name: str = Form(...)):
+    raise HTTPException(status_code=503, detail="Background upload not available in local dev mode")
 
-# Backgrounds
-@app.get("/api/backgrounds", response_model=List[schemas.BackgroundResponse])
-async def list_backgrounds(
-    category: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """Get list of available backgrounds"""
-    backgrounds = await background_service.get_backgrounds(db, category=category)
-    return backgrounds
+# Actions - disabled for local development
+@app.get("/api/actions")
+async def list_actions():
+    return []
 
+# Voice - disabled for local development
+@app.post("/api/upload-voice")
+async def upload_voice(file: UploadFile = File(...), name: str = Form(...)):
+    raise HTTPException(status_code=503, detail="Voice upload not available in local dev mode")
 
-@app.post("/api/backgrounds", response_model=schemas.BackgroundResponse)
-async def upload_background(
-    file: UploadFile = File(...),
-    name: str = Form(...),
-    category: str = Form(None),
-    db: Session = Depends(get_db)
-):
-    """Upload a new background"""
-    try:
-        background = await background_service.upload_background(file, name, category, db)
-        return background
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@app.get("/api/voices")
+async def list_voices():
+    return []
 
+# Video Generation - disabled for local development
+@app.post("/api/generate")
+async def generate_video():
+    raise HTTPException(status_code=503, detail="Video generation not available in local dev mode")
 
-# Actions
-@app.get("/api/actions", response_model=List[schemas.ActionResponse])
-async def list_actions(db: Session = Depends(get_db)):
-    """Get list of available actions"""
-    actions = await model_service.get_actions(db)
-    return actions
+@app.get("/api/video/{job_id}")
+async def get_video_status(job_id: str):
+    raise HTTPException(status_code=503, detail="Video service not available in local dev mode")
 
-
-# Voice
-@app.post("/api/upload-voice", response_model=schemas.VoiceTemplateResponse)
-async def upload_voice(
-    file: UploadFile = File(...),
-    name: str = Form(...),
-    db: Session = Depends(get_db)
-):
-    """Upload a custom voice sample for cloning"""
-    try:
-        voice = await voice_service.upload_voice(file, name, db)
-        return voice
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/voices", response_model=List[schemas.VoiceTemplateResponse])
-async def list_voices(db: Session = Depends(get_db)):
-    """Get list of available voice templates"""
-    voices = await voice_service.get_voices(db)
-    return voices
-
-
-# Video Generation
-@app.post("/api/generate", response_model=schemas.VideoJobResponse)
-async def generate_video(
-    request: schemas.VideoGenerationRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Generate a UGC video
-    This is async - returns job_id to track progress
-    """
-    try:
-        job = await video_service.create_video_job(request, db)
-        return job
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/video/{job_id}", response_model=schemas.VideoJobResponse)
-async def get_video_status(
-    job_id: str,
-    db: Session = Depends(get_db)
-):
-    """Get video generation status and result"""
-    job = await video_service.get_job_status(job_id, db)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.get("/api/videos", response_model=List[schemas.VideoJobResponse])
-async def list_videos(
-    skip: int = 0,
-    limit: int = 50,
-    status: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """List all video jobs"""
-    jobs = await video_service.list_jobs(db, skip=skip, limit=limit, status=status)
-    return jobs
+@app.get("/api/videos")
+async def list_videos():
+    return []
 
 
 # Error handler
